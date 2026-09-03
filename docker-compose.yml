@@ -1,0 +1,90 @@
+name: nginx-server-docker
+
+services:
+  # Proxy reverso central, compartido por CUALQUIER proyecto del servidor -- no le importa el
+  # stack de lo que hay detras (Angular SSR, API .NET, app Java, sitio estatico, lo que sea):
+  # nginx solo necesita "nombre de contenedor + puerto interno" para cada uno.
+  nginx:
+    # Version fija en vez de "latest": con "latest", un rebuild futuro puede traer una version
+    # distinta de nginx sin aviso (cambios de comportamiento o, en el peor caso, una version con
+    # una vulnerabilidad recien descubierta) -- actualiza este tag deliberadamente cuando quieras
+    # subir de version, no de forma implicita. Variante "-alpine": misma imagen oficial, base mas
+    # chica (menos superficie de ataque). Track "stable" (1.30.x), no "mainline" -- stable es la
+    # recomendacion oficial de nginx para produccion.
+    image: nginx:1.30-alpine
+    container_name: edge-nginx
+    restart: always
+    # Toda variable de .env queda disponible dentro del contenedor SIN enumerarla acá -- agregar
+    # un sitio nuevo es agregar su bloque a .env + su .conf.template, nunca tocar este archivo.
+    # (La imagen oficial de nginx procesa via envsubst cualquier *.template en
+    # NGINX_VOLUME_TEMPLATES usando estas mismas variables de entorno.)
+    env_file:
+      - .env
+    ports:
+      - '${NGINX_PORT_MAP}'
+      - '${NGINX_PORT_SSL_MAP}'
+    volumes:
+      # La imagen oficial de nginx procesa (envsubst) cualquier archivo .template montado aqui --
+      # ver NGINX_VOLUME_TEMPLATES en .env (fijo: debe ser /etc/nginx/templates, requisito de la
+      # imagen, no personalizable). Un archivo .conf.template por proyecto -- agregar uno nuevo no
+      # requiere reiniciar la imagen ni tocar este compose, solo "docker compose restart nginx"
+      # (o esperar a que el redespliegue automatico lo haga).
+      - ./resources/templates:${NGINX_VOLUME_TEMPLATES}
+
+      # Certificados -- una carpeta por certificado real (puede haber mas de uno: un wildcard para
+      # un dominio, certificados sueltos de Let's Encrypt para otros). Cada proyecto referencia el
+      # suyo con sus propias variables APP_<SITIO>_VOLUME_SSL/etc en .env -- no hay un unico
+      # certificado "del sistema".
+      - ./resources/ssl:/etc/resources/ssl
+
+      # access.log/error.log al host -- Fail2Ban corre en el HOST (nunca dentro de un contenedor),
+      # sin este mount no puede ver nada de lo que nginx registra.
+      - ./resources/logs:${NGINX_VOLUME_LOGS}
+    networks:
+      - edge-net
+
+  # Emite y renueva automaticamente certificados de Let's Encrypt via reto dns-01 contra la API de
+  # IONOS. Generico por dominio -- cada proyecto que use este mecanismo define su propio
+  # LETSENCRYPT_DOMAIN/carpeta de destino (ver .env.template); si en el futuro hace falta otro
+  # proveedor DNS, este servicio es el unico lugar que cambiaria (plugin de certbot distinto).
+  certbot:
+    # Con "profiles", este servicio NO se levanta con un "docker compose up" normal -- solo
+    # cuando el perfil "letsencrypt" esta activo (COMPOSE_PROFILES=letsencrypt en .env). Dejalo
+    # vacio/sin definir si vas a usar certificados manuales (Opcion A).
+    profiles:
+      - letsencrypt
+    build:
+      context: ./certbot
+    restart: unless-stopped
+    # Loop de renovacion (uso normal): "certbot renew" no hace nada si al certificado le faltan
+    # mas de 30 dias para expirar (los de Let's Encrypt duran 90) -- correrlo seguido es seguro.
+    # Para la emision inicial (una sola vez, manual) este entrypoint se sobreescribe explicitamente
+    # -- ver README.md ("docker compose run --entrypoint certbot certbot certonly ...").
+    entrypoint:
+      [
+        '/bin/sh',
+        '-c',
+        'trap exit TERM; while :; do certbot renew --non-interactive --quiet; sleep 12h & wait; done',
+      ]
+    env_file:
+      - .env
+    volumes:
+      # Bind mount (no volumen nombrado) a proposito: los .pem/.key generados quedan visibles
+      # directamente en el filesystem real, igual que los certificados manuales.
+      - ./resources/ssl:/etc/letsencrypt
+      # Nunca commiteado (.gitignore) -- credencial real de la API de IONOS.
+      - ./certbot/ionos.ini:/etc/letsencrypt/ionos.ini:ro
+    networks:
+      - edge-net
+
+networks:
+  # Red compartida UNICA para todo el servidor -- nginx la crea (sin "external: true") la primera
+  # vez que este stack se levanta; CUALQUIER proyecto (de este repo o de otro, cualquier stack)
+  # se une a ella desde su propio docker-compose.yml declarandola con "external: true", solo para
+  # que nginx le pueda hacer proxy_pass. Nada impide que un proyecto ADEMAS tenga su propia red
+  # privada para sus propios contenedores internos (ej. api+db) que nginx nunca toca -- y si el
+  # dia de mañana dos proyectos necesitan hablarse directo entre si sin pasar por nginx, un
+  # contenedor puede sumarse a una red adicional puntual sin rediseñar nada de esto (un contenedor
+  # de Docker puede pertenecer a varias redes a la vez).
+  edge-net:
+    name: edge-net

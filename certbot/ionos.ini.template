@@ -1,0 +1,25 @@
+# Copiar a "ionos.ini" (sin ".template") en esta misma carpeta y llenar con tu API key real --
+# ese archivo esta en .gitignore, nunca se commitea.
+#
+# El PORTAL para generar la key es especifico de tu region/marca de cuenta -- para un contrato
+# comprado en ionos.mx (my.ionos.mx/account/subscriptions) es developer.hosting.ionos.mx/keys,
+# NO developer.hosting.ionos.com ni .es (ambos pueden dar "This article is not available for
+# your contract" aunque tu cuenta si tenga acceso -- es cosa de portal/region, no de permisos).
+# Primera vez: al entrar a developer.hosting.ionos.mx/keys/elegir tu contrato, IONOS pide activar
+# el producto "Hosting API Access" (dependiendo de tu contrato regularmente es gratis, $0/mes)
+# antes de dejarte crear una key -- es un paso de activacion normal, no un error.
+#
+# El endpoint de la API REST en si (dns_ionos_endpoint de abajo) es UNICO Y GLOBAL, no cambia con
+# el portal -- siempre es https://api.hosting.ionos.com sin importar si generaste la key desde
+# el portal .mx, .es, .com o .de. Verificado contra la documentacion oficial
+# (developer.hosting.ionos.com/docs/dns).
+#
+# OJO: esta es la API de dominios/hosting "normal" de IONOS -- si tu dominio vive en "IONOS Cloud"
+# (otro producto distinto), necesitas el plugin certbot-dns-ionos-cloud en vez de este, con
+# credenciales propias.
+#
+# La key que te da IONOS viene como "prefix.secret" en un solo string -- la parte antes del punto
+# es dns_ionos_prefix, la de despues es dns_ionos_secret.
+dns_ionos_prefix = TU_PREFIX_AQUI
+dns_ionos_secret = TU_SECRET_AQUI
+dns_ionos_endpoint = https://api.hosting.ionos.com

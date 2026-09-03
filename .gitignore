@@ -1,0 +1,35 @@
+# Nunca trackear el .env real (secretos: rutas de certificado, credenciales de certbot) -- solo
+# .env.template va a git.
+.env
+
+# Certificados reales (privados, manuales o emitidos por Let's Encrypt) -- nunca a git, ni por
+# extension ni por carpeta completa (por si algun dia se agrega una carpeta sin archivos .key/.cer
+# sueltos, ej. la estructura que arma certbot).
+*.key
+*.pem
+*.cer
+*.crt
+resources/ssl/*/
+
+# Credencial real de la API de IONOS (certbot-dns-ionos) -- tan sensible como una contrasena.
+certbot/ionos.ini
+
+# access.log/error.log montados desde nginx para Fail2Ban -- no aportan nada versionados y pueden
+# crecer sin limite.
+resources/logs/
+
+# Node -- por si alguna vez se agrega tooling (ej. un script de validacion) a este repo.
+node_modules
+
+# Este repo es la plantilla PUBLICA que la guia le pide a cualquiera forkear (ver
+# development-tips-and-tutorials, pagina "Preparar GitHub") -- por default, CUALQUIER
+# .conf.template nuevo que se agregue en resources/templates/ queda SOLO en el filesystem
+# local/servidor real (nunca se sube), y hay que permitirlo a mano, uno por uno, si de verdad
+# tiene que ser publico. Al reves de "listar los reales para ignorarlos" (lo que se probo primero
+# y fallo: git ls-files confirmo 12 archivos de configuracion REAL de produccion de FrugoCorp -- 9
+# sitios + el dominio raiz -- ya commiteados/pusheados al repo publico, porque agregarlos a mano
+# uno por uno es facil de olvidar, que es justo como paso esto la primera vez). Con este enfoque
+# "todo ignorado por default", agregar un sitio nuevo NUNCA lo expone sin querer.
+resources/templates/*
+!resources/templates/00-tuning.conf.template
+!resources/templates/00-default-catchall.conf.template

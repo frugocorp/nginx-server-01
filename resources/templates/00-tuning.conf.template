@@ -1,0 +1,18 @@
+# Ajustes de http{} compartidos por TODOS los proyectos -- no es un sitio, es tuning global.
+# Nombre "00-" a proposito, para que sea el primero (orden alfabetico) en /etc/nginx/conf.d/.
+#
+# "variables_hash_bucket_size": cada proyecto agrega sus propias variables (ej. "map" para el
+# upgrade de WebSocket, "set $upstream_APP_<SLUG>") -- el default de nginx (64) se queda corto ya
+# con ~10 proyectos ("could not build variables_hash_bucket_size, you should increase
+# variables_hash_bucket_size: 64", nginx se niega a arrancar COMPLETO, no solo el sitio de mas).
+# Bug real encontrado asi -- 128 alcanza para varias decenas de proyectos; subir de nuevo si
+# nginx vuelve a quejarse al agregar muchos mas.
+
+variables_hash_bucket_size 128;
+
+# Mismo motivo, para los "server_name" (uno o mas hostnames reales por proyecto) -- nginx arma un
+# hash tambien para resolver que server{} le corresponde a cada Host entrante, y el mismo default
+# de 64 se queda corto por la misma razon ("could not build server_names_hash, you should
+# increase server_names_hash_bucket_size: 64", bug real encontrado justo despues del anterior).
+
+server_names_hash_bucket_size 128;

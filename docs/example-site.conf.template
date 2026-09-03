@@ -1,0 +1,88 @@
+# EJEMPLO -- copiar a resources/templates/<proyecto>.conf.template y reemplazar SLUG (minusculas,
+# ej. "parser-md") y SLUG_MAY (mismo nombre en mayusculas sin separadores, ej. "PARSERMD") por el
+# nombre real del proyecto. Este archivo NO vive en resources/templates a proposito -- si viviera
+# ahi, la imagen de nginx lo procesaria (envsubst) igual que a cualquier .template real, y al no
+# tener las variables SLUG_MAY_* definidas en .env, generaria un .conf invalido.
+#
+# Generico por diseno: a nginx no le importa que hay atras de APP_SLUG_MAY_CONTAINER_NAME (Angular
+# SSR, una API en .NET/Kestrel, Spring Boot, un sitio estatico) -- solo reenvia a
+# "contenedor:puerto". Ajustar SOLO si el proyecto necesita algo especial (ej. una API JSON no
+# necesita el mapa de upgrade de WebSocket de mas abajo, o necesita client_max_body_size mas grande
+# para subir archivos).
+
+# Zona/variable de mapeo propias de ESTE proyecto -- nombre unico obligatorio, no cosmetico: todos
+# los .template de esta carpeta se cargan dentro del MISMO bloque http{} de un unico nginx, y dos
+# proyectos con el mismo nombre de zona o de variable de "map" chocan entre si -- nginx se niega a
+# arrancar completo (no solo ese sitio). Por eso el nombre de zona/variable siempre deriva del
+# SLUG del proyecto, nunca un nombre generico como "web" o "api".
+limit_req_zone $binary_remote_addr zone=web_SLUG:10m rate=20r/s;
+
+# Necesario solo si el proyecto usa WebSocket (HMR de un dev server, chat en vivo, SignalR de
+# .NET, etc.) -- si es una API REST simple, se puede borrar este bloque y las 2 lineas que lo usan
+# mas abajo (proxy_set_header Upgrade/Connection).
+map $http_upgrade $connection_upgrade_SLUG {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    server_name ${APP_SLUG_MAY_SERVER_NAME};
+    listen     ${NGINX_PORT_CONTAINER};
+    server_tokens off;
+    return     301 https://$host$request_uri;
+}
+
+server {
+    server_name               ${APP_SLUG_MAY_SERVER_NAME};
+    listen                    ${NGINX_PORT_SSL_CONTAINER} ssl;
+    server_tokens off;
+
+    ssl_certificate           ${APP_SLUG_MAY_VOLUME_SSL}/${APP_SLUG_MAY_SSL_CERTIFICATE};
+    ssl_certificate_key       ${APP_SLUG_MAY_VOLUME_SSL}/${APP_SLUG_MAY_SSL_CERTIFICATE_KEY};
+    ssl_protocols             TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+    ssl_ciphers               "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305";
+    ssl_ecdh_curve            secp384r1;
+    ssl_session_cache         shared:SSL:10m;
+    ssl_session_tickets       off;
+    ssl_stapling              on; #ensure your cert is capable
+    ssl_stapling_verify       on; #ensure your cert is capable
+    ssl_trusted_certificate   ${APP_SLUG_MAY_VOLUME_SSL}/${APP_SLUG_MAY_SSL_TRUSTED_CHAIN_INTERMEDIATE};
+
+    add_header Strict-Transport-Security "max-age=63072000; includeSubdomains" always;
+    add_header X-Frame-Options DENY always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "geolocation=(), camera=(), microphone=()" always;
+
+    # Resolver embebido de Docker + variable en proxy_pass -- nginx resuelve el contenedor destino
+    # EN CADA REQUEST (cache de 10s) en vez de al arrancar, asi que este server sigue funcionando
+    # (502 en vez de tumbar nginx completo) aunque el contenedor del proyecto todavia no este
+    # levantado, o se haya recreado con otra IP.
+    resolver 127.0.0.11 valid=10s;
+
+    location / {
+        set $upstream_APP_SLUG_MAY http://${APP_SLUG_MAY_CONTAINER_NAME}:${APP_SLUG_MAY_PORT_CONTAINER};
+
+        limit_req               zone=web_SLUG burst=40 nodelay;
+
+        proxy_redirect          off;
+        proxy_set_header        Host $host;
+        proxy_set_header        X-Real-IP $remote_addr;
+        proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header        X-Forwarded-Proto $scheme;
+        client_max_body_size    10m;
+        client_body_buffer_size 128k;
+        proxy_connect_timeout   90;
+        proxy_send_timeout      90;
+        proxy_read_timeout      90;
+        proxy_buffers           32 4k;
+
+        # Handshake de WebSocket -- borrar este bloque de 3 lineas si el proyecto no lo necesita.
+        proxy_http_version      1.1;
+        proxy_set_header        Upgrade $http_upgrade;
+        proxy_set_header        Connection $connection_upgrade_SLUG;
+
+        proxy_pass $upstream_APP_SLUG_MAY;
+    }
+}

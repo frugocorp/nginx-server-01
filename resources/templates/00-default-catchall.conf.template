@@ -1,0 +1,21 @@
+# Sin este bloque, nginx usa el PRIMER server{} que carga (orden alfabetico de este directorio)
+# como default IMPLICITO para cualquier Host/SNI que no matchee ningun bloque real -- filtrando el
+# contenido de un proyecto real a quien pruebe un dominio/subdominio al azar contra esta IP (mismo
+# problema con o sin DNS wildcard). Este bloque se declara "default_server" a proposito, en los 2
+# puertos: gana siempre como catch-all, sin importar el orden de carga de los demas .conf.template
+# reales -- ningun server_name real necesita cambiar nada para que esto funcione, un match
+# explicito de server_name siempre le gana a un default_server.
+
+server {
+    listen      ${NGINX_PORT_CONTAINER} default_server;
+    server_name _;
+    return      444;
+}
+
+server {
+    listen               ${NGINX_PORT_SSL_CONTAINER} ssl default_server;
+    server_name          _;
+    # Rechaza el handshake TLS directo para cualquier SNI que no matchee ningun proyecto real --
+    # ni siquiera intenta ofrecer un certificado (no hace falta ssl_certificate en este bloque).
+    ssl_reject_handshake on;
+}
